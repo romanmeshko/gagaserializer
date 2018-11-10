@@ -14,6 +14,7 @@ import static io.shooroop.gaga.impl.Settings.*;
 import static io.shooroop.gaga.impl.Settings.Enum.BEGIN;
 import static io.shooroop.gaga.impl.Settings.Enum.END;
 import static java.util.Objects.isNull;
+import static org.springframework.util.Assert.notNull;
 import static org.springframework.util.ReflectionUtils.doWithLocalFields;
 import static org.springframework.util.ReflectionUtils.makeAccessible;
 
@@ -27,6 +28,7 @@ public class GagaSerializer implements SerializerToBytes {
     }
 
     private StringBuilder serializeObject(Object object) {
+        notNull(object, "Object is null!");
         StringBuilder buffer = new StringBuilder();
         serializeObject(object.getClass(), object, buffer);
         return buffer;
