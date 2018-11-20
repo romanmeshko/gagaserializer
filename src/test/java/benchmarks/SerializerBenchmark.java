@@ -1,4 +1,4 @@
-package io.shooroop.gaga.benchmarks;
+package benchmarks;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Output;
@@ -6,7 +6,9 @@ import com.esotericsoftware.kryo.pool.KryoPool;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.shooroop.gaga.impl.GagaSerializer;
+import data.TestClass;
+import io.shooroop.gaga.contract.SerializerToBytes;
+import io.shooroop.gaga.impl.serialize.GagaSerializer;
 import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.results.format.ResultFormatType;
 import org.openjdk.jmh.runner.Runner;
@@ -20,8 +22,8 @@ import java.io.ByteArrayOutputStream;
 @State(Scope.Benchmark)
 public class SerializerBenchmark {
 
-    private static final TestClass testData = TestData.create();
-    private static final GagaSerializer gagaSerializer = new GagaSerializer();
+    private static final TestClass testData = TestClass.newInstance();
+    private static final SerializerToBytes<TestClass> gagaSerializer = new GagaSerializer<>();
     private static final ObjectMapper jacksonObjectMapper = new ObjectMapper(new JsonFactory());
 
     final KryoPool KRYO_POOL = new KryoPool.Builder(
@@ -66,7 +68,7 @@ public class SerializerBenchmark {
     public static void main(String[] args) throws RunnerException {
 
         Options opts = new OptionsBuilder()
-                .include(SerializerBenchmark.class.getSimpleName())
+                .include(benchmarks.SerializerBenchmark.class.getSimpleName())
                 .warmupIterations(5)
                 .measurementIterations(5)
                 .jvmArgs("-server")
@@ -76,4 +78,5 @@ public class SerializerBenchmark {
 
         new Runner(opts).run();
     }
+
 }

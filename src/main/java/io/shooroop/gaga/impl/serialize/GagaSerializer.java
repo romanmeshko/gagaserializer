@@ -1,6 +1,7 @@
-package io.shooroop.gaga.impl;
+package io.shooroop.gaga.impl.serialize;
 
 import io.shooroop.gaga.contract.SerializerToBytes;
+import io.shooroop.gaga.impl.deserialize.parser.TypeTag;
 import org.springframework.lang.NonNull;
 import org.springframework.util.ReflectionUtils;
 
@@ -10,15 +11,15 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 
+import static io.shooroop.gaga.impl.GagaUtils.isPrimitiveType;
 import static io.shooroop.gaga.impl.Settings.*;
-import static io.shooroop.gaga.impl.Settings.Enum.BEGIN;
-import static io.shooroop.gaga.impl.Settings.Enum.END;
+import static io.shooroop.gaga.impl.deserialize.parser.FieldRepresentation.presentationOf;
 import static java.util.Objects.isNull;
 import static org.springframework.util.Assert.notNull;
 import static org.springframework.util.ReflectionUtils.doWithLocalFields;
 import static org.springframework.util.ReflectionUtils.makeAccessible;
 
-public class GagaSerializer implements SerializerToBytes {
+public class GagaSerializer<T> implements SerializerToBytes<T> {
 
     @Override
     public byte[] serializationOf(@NonNull Object object) {
@@ -46,12 +47,13 @@ public class GagaSerializer implements SerializerToBytes {
         doWithLocalFields(
                 clazz,
                 (field) -> {
-                    if (filter.isPresent() && !filter.get().matches(field)) {
+                    if (java.lang.reflect.Modifier.isStatic(field.getModifiers()) ||
+                            (filter.isPresent() && !filter.get().matches(field))) {
                         return;
                     }
                     makeAccessible(field);
                     Object value = field.get(object);
-                    if (isNull(value)) {
+                    if (isNull(value) || field.getType().isEnum()) {
                         return;
                     }
 
@@ -75,12 +77,9 @@ public class GagaSerializer implements SerializerToBytes {
                         return;
                     }
 
-                    if (field.getType().isEnum()) {
-                        serializeEnum(buffer, field, value);
-                        return;
-                    }
-
-                    markTypeAndName(field.getGenericType().getTypeName(), field.getName(), buffer);
+                    buffer.append(
+                            presentationOf(TypeTag.OBJECT, field.getGenericType().getTypeName(), field.getName())
+                    );
                     serializeObject(field.getType(), value, buffer);
                     buffer.append(DELIMITER);
                 }
@@ -89,22 +88,26 @@ public class GagaSerializer implements SerializerToBytes {
     }
 
     private void serializePrimitive(Object object, StringBuilder buffer, Field field) throws IllegalAccessException {
-        markTypeAndName(field.getType().getTypeName(), field.getName(), buffer).
-                append(NAME_VALUE_DELIMIT).
+        buffer.append(
+                presentationOf(TypeTag.PRIMITIVE, field.getType().getTypeName(), field.getName())).
                 append(field.get(object).toString()).
                 append(DELIMITER);
     }
 
     private void serializeArray(StringBuilder buffer, Field field, Object value) {
-        markTypeAndName(field.getType().getTypeName(), field.getName(), buffer).
+        buffer.append(
+                presentationOf(TypeTag.ARRAY, field.getType().getTypeName(), field.getName())).
                 append(COLLECT_BEGIN);
         for (int i = 0; i < Array.getLength(value); i++) {
             serializeElement(Array.get(value, i), buffer);
             buffer.append(COLLECT_DELIMIT);
         }
+        collectionEnd(buffer);
+    }
+
+    private void collectionEnd(StringBuilder buffer) {
         buffer.deleteCharAt(buffer.length() - 1);
-        buffer.append(COLLECT_END);
-        buffer.append(DELIMITER);
+        buffer.append(TypeTag.COLLECTION.endMark);
     }
 
     private void serializeElement(Object element, StringBuilder buffer) {
@@ -116,33 +119,20 @@ public class GagaSerializer implements SerializerToBytes {
     }
 
     private void serializeCollection(StringBuilder buffer, Field field, Collection<?> collection) {
-        markTypeAndName(field.getGenericType().getTypeName(), field.getName(), buffer).
+        buffer.append(
+                presentationOf(TypeTag.COLLECTION, field.getGenericType().getTypeName(), field.getName())).
                 append(COLLECT_BEGIN);
         collection.forEach(element -> {
                     serializeElement(element, buffer);
                     buffer.append(COLLECT_DELIMIT);
                 }
         );
-        buffer.append(COLLECT_END);
-        buffer.append(DELIMITER);
-    }
-
-    private void serializeEnum(StringBuilder buffer, Field field, Object value) {
-        buffer.append(BEGIN);
-        buffer.append(field.getName());
-        buffer.append(value);
-        buffer.append(DELIMITER);
-        serialize(value.getClass(),
-                value,
-                buffer,
-                Optional.of((e) -> !e.isEnumConstant() && !e.getName().contains("VALUES"))
-        );
-        buffer.append(END);
-        buffer.append(DELIMITER);
+        collectionEnd(buffer);
     }
 
     private void serializeMap(StringBuilder buffer, Field field, Map<?, ?> map) {
-        markTypeAndName(field.getGenericType().getTypeName(), field.getName(), buffer).
+        buffer.append(
+                presentationOf(TypeTag.MAP, field.getGenericType().getTypeName(), field.getName())).
                 append(COLLECT_BEGIN);
         map.forEach((k, v) -> {
                     serializeElement(k, buffer);
@@ -151,22 +141,8 @@ public class GagaSerializer implements SerializerToBytes {
                     buffer.append(COLLECT_DELIMIT);
                 }
         );
-        buffer.append(COLLECT_END);
-        buffer.append(DELIMITER);
+        collectionEnd(buffer);
     }
 
-
-    private StringBuilder markTypeAndName(String typeName, String fieldName, StringBuilder buffer) {
-        return buffer.append(typeName).
-                append(TYPE_NAME_DELIMIT).
-                append(fieldName);
-    }
-
-    private boolean isPrimitiveType(Class<?> type) {
-        return (type.isPrimitive() && type != void.class) ||
-                type == Double.class || type == Float.class || type == Long.class ||
-                type == Integer.class || type == Short.class || type == Character.class ||
-                type == Byte.class || type == Boolean.class || type == String.class;
-    }
 
 }
